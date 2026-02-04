@@ -7,6 +7,7 @@ generic install for mongodb  instance on rhel 8 servers, including software unpa
 1. **downloads**:  
 - download latest mongodb software tgz for server,shell,tools from:
 https://www.mongodb.com/try/download/community
+
 alternative: download kept static versions:
 https://drive.google.com/drive/folders/1cAhUdsBT1dS_7XvIGmr9TSGe-2k7jCok?usp=sharing
 - also download this repo  
