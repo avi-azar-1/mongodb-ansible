@@ -92,7 +92,7 @@
         name: mongodb
     - name: install python monogodb connector
       pip:
-        name: pymongo
+        name: *.whl
     - name: add inprog role
       community.mongodb.mongodb_role:
         name: inProgRole
