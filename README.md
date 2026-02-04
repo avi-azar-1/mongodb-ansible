@@ -35,3 +35,4 @@ ansible-playbook -i mongo_inventory.yaml installmongodb.yaml
 ```
 for local install (without ssh) run with '-c local' flag  
 for remote ssh create id_rsa.pub in ansible server and copy to known_hosts in target server  
+if service does not start disable selinux and rerun install 
