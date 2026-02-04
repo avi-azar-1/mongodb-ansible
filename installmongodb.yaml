@@ -1,0 +1,161 @@
+- name: Install Mongodb 7.0 on RHEL 8
+  hosts: all
+  become: true
+  vars:
+    ansible_ssh_common_args: '-o StrictHostKeyChecking=no'
+  tasks:
+    - name: check if mongodb service exists  
+      service_facts: 
+      register: services_state
+    - name: make sure mongodb is not installed 
+      meta: end_host
+      when: services_state["ansible_facts"]["services"]["mongodb.service"] is defined
+    - name: Find Three Disks for Log, software and Data
+      shell: lsblk -l | egrep "sd[b-d]" | awk '{print $4,$1}' | sort -hr | awk '{print $2}'
+      register:  disks
+    - name: Create Physical and Volume Groups
+      lvg:
+        vg: "{{ item.vg }}"
+        pvs: "{{ item.pv }}"
+      loop:
+        - { pv: "/dev/{{ disks.stdout_lines.0 }}", vg: "datavg" }
+        - { pv: "/dev/{{ disks.stdout_lines.1 }}", vg: "logvg" }
+        - { pv: "/dev/{{ disks.stdout_lines.2 }}", vg: "softwarevg" }
+    - name: Create Logical Volumes
+      lvol:
+        vg: "{{ item.vg }}"
+        lv: "{{ item.lv }}"
+        size: +100%FREE
+      loop:
+        - { vg: "datavg", lv: "datalv" }
+        - { vg: "logvg", lv: "loglv" }
+        - { vg: "softwarevg", lv: "softwarelv" }
+    - name: Format the XFS File Systems
+      filesystem:
+        fstype: xfs
+        dev: "{{ item }}"
+      loop:
+        - /dev/mapper/datavg-datalv
+        - /dev/mapper/logvg-loglv
+        - /dev/mapper/softwarevg-softwarelv
+    - name: Create Mount Directories
+      file:
+        path: "{{ item.path  }}"
+        state: directory
+        owner: root
+        group: root
+        mode: "{{ item.privs }}"
+      loop:
+        - { path: "/db/{{ ansible_hostname }}/data101", privs: 755 }
+        - { path: "/db/{{ ansible_hostname }}/sw", privs: 755 }
+        - { path: "/var/log/mongo", privs: 755 }
+    - name: Mount Filesystems
+      mount:
+        path: "{{ item.path }}"
+        src: "{{ item.src }}"
+        fstype: xfs
+        opts: defaults
+        state: mounted
+      loop:
+        - { path: "/db/{{ ansible_hostname }}/data101", src: "/dev/mapper/datavg-datalv" }
+        - { path: "/db/{{ ansible_hostname }}/sw", src: "/dev/mapper/softwarevg-softwarelv" }
+        - { path: "/var/log/mongo", src: "/dev/mapper/logvg-loglv" }
+    - name: extract mongo shell software
+      unarchive:
+        src: "{{file_location}}/software/mongosh-1.10.6-linux-x64.tgz"
+        dest: /db/{{ ansible_hostname }}/sw
+        extra_opts: ['--strip-components=1'] #removes top level directory
+    - name: extract mongo tools software
+      unarchive:
+        src: "{{file_location}}/software/mongodb-database-tools-rhel88-x86_64-100.14.1.tgz"
+        dest: /db/{{ ansible_hostname }}/sw
+        extra_opts: ['--strip-components=1']
+    - name: extract mongo server software
+      unarchive:
+        src: "{{file_location}}/software/mongodb-linux-x86_64-rhel8-8.2.4.tgz"
+        dest: /db/{{ ansible_hostname }}/sw
+        extra_opts: ['--strip-components=1']
+    - name: create mongo config file
+      template:
+        src: "{{ file_location }}/mongodb.conf.j2"
+        dest: "/etc/mongodb.conf"
+        #backup: yes
+    - name: create mongo service file
+      template:
+        src: "{{ file_location }}/mongodb.service.j2"
+        dest: "/usr/lib/systemd/system/mongodb.service"
+    - name: start and enable mongo service
+      systemd:
+        daemon_reload: yes
+        enabled: yes
+        state: started
+        name: mongodb
+    - name: install python monogodb connector
+      pip:
+        name: pymongo
+    - name: add inprog role
+      community.mongodb.mongodb_role:
+        name: inProgRole
+        database: admin
+        login_port: "{{db_port}}"
+        privileges:
+        - resource:
+            cluster: true
+          actions:
+            - inprog
+            - replSetGetStatus
+            - replSetGetConfig
+        state: present
+    - name: add serverStatus role
+      community.mongodb.mongodb_role:
+        name: serverStatus
+        database: admin
+        login_port: "{{db_port}}"
+        privileges:
+        - resource:
+            cluster: true
+          actions:
+            - serverStatus
+        state: present
+    - name : add dba user
+      community.mongodb.mongodb_user:
+        name: dba
+        database: admin
+        login_port: "{{db_port}}"
+        password: "{{dba_password}}"
+        roles:
+          - root
+        state: present
+    - name : add applicative user
+      community.mongodb.mongodb_user:
+        name: "{{app_user}}"
+        database: "{{db}}"
+        login_port: "{{db_port}}"
+        password: "{{app_password}}"
+        roles:
+          - readWrite
+        state: present
+      when: db != '' and app_user != '' and app_password != ''
+    - name: activate mongodb security
+      lineinfile:
+        path: /etc/mongodb.conf
+        regexp: '^  authorization: disabled'
+        line: '  authorization: enabled'
+    - name: restart mongo service
+      systemd:
+        state: restarted
+        name: mongodb
+    - name: add shortcuts to bashrc
+      blockinfile:
+        path: /root/.bashrc
+        block: |
+          PATH=$PATH:/db/{{ ansible_hostname }}/sw/bin
+          alias mongo=/db/{{ ansible_hostname }}/sw/bin/mongosh
+          export MONGO_PORT={{ db_port }}
+          export MONGO_PASS={{ dba_password }}
+          alias sys='mongosh --quiet --port ${MONGO_PORT} --username dba --password ${MONGO_PASS} --authenticationDatabase admin admin'
+        state: present
+    - name: add mongoshrc file
+      copy:
+        src: "{{file_location}}/mongoshrc.js"
+        dest: ~/.mongoshrc.js

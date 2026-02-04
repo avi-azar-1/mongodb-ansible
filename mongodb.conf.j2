@@ -1,0 +1,42 @@
+systemLog:
+  verbosity: 0
+  quiet: false
+  path: /var/log/mongo/mongodb.log
+  logAppend: false
+  logRotate: rename
+  destination: file
+  timeStampFormat: iso8601-local
+
+processManagement:
+  fork: true
+  pidFilePath: /var/run/mongodb/mongodb.pid
+
+net:
+  port: {{ db_port }}
+  bindIp: {{ ansible_default_ipv4.address }},127.0.0.1
+
+storage:
+  dbPath: /db/{{ ansible_hostname }}/data101
+  directoryPerDB: true
+  engine: wiredTiger
+  wiredTiger:
+    engineConfig:
+      directoryForIndexes: true
+
+net:
+  compression:
+    compressors: snappy,zstd
+
+security:
+  authorization: disabled
+#  keyFile: /etc/mongodb.key
+#  clusterAuthMode: keyFile
+
+setParameter:
+  enableLocalhostAuthBypass: true
+
+#replication:
+#  oplogSizeMB: 10240
+#  replSetName: rs0
+
+

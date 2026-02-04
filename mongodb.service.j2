@@ -1,0 +1,23 @@
+[Unit]
+Description=Handling mongoDB service
+After=syslog.target network.target mongo-readahead.service
+
+[Service]
+Type=forking
+PIDFile=/var/run/mongodb/mongodb.pid
+ExecStartPre=/bin/mkdir -p /var/run/mongodb
+ExecStart=/db/{{ ansible_hostname }}/sw/bin/mongod --config /etc/mongodb.conf
+ExecStop=/db/{{ ansible_hostname }}/sw/bin/mongod --config /etc/mongodb.conf --shutdown
+ExecReload=/bin/kill -HUP $MAINPID
+Restart=always
+RestartSec=15
+#added as mongodb best practice
+LimitFSIZE=infinity
+LimitCPU=infinity
+LimitAS=infinity
+LimitMEMLOCK=infinity
+LimitNOFILE=64000
+LimitNPROC=64000
+
+[Install]
+WantedBy=multi-user.target

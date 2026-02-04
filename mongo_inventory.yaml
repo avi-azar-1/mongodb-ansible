@@ -1,0 +1,5 @@
+[all:vars]
+file_location=/mnt/c/Users/GH6417/Downloads/mongo
+#file_location=/...somepath.../mongodb-ansible
+[mongodb_servers]
+localhost db_port=24717 dba_password= app_user= app_password= db=
